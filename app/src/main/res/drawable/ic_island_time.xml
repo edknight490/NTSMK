@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Island Sun -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:pathData="M12,4 A4,4 0 0,1 12,12 A4,4 0 0,1 12,4 Z" />
+    <!-- Island Base -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M2,18 C8,16 16,16 22,18 L22,20 H2 Z" />
+    <!-- Rays -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M5,10 C5,10 8,8 10,12 M19,10 C19,10 16,8 14,12" />
+</vector>
