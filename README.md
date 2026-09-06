@@ -20,6 +20,8 @@ The pause button on the home screen controls will pause the stream, and the stop
 # Known limitations
 NTS Radio's streams are all 256kbps MP3. There is no variable bitrate, so if your connection can't keep up it'll buffer instead of adjusting the bitrate.
 
+The Phone has an aggressive background task killer that could affect this app. I strongly reccomend going to  settings → Developer Options, and searching for “Duraspeed”. Then you can change the settings to keep this app running in the background.
+
 Each live show starts on the hour every hour, but the API used to access the show information only seems to make an updated version available at around 12/13 mninutes past each hour. I've set the app to fetch new information around then, as well as whenever you start playing a show. You can also drag down on one of the live show card boxes to manually refresh.
 # Please support NTS Radio
 NTS Radio is a brilliant platform that relies on support from its listeners. Please consider signing up to a paid account at https://www.nts.live/
