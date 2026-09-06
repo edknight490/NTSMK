@@ -1,5 +1,5 @@
 {
-  "name": "NTS Radio",
+  "name": "NTS MK",
   "description": "Minimalist e-ink player for NTS Radio live channels and infinite mixtapes inspired by Mudita Kompakt.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

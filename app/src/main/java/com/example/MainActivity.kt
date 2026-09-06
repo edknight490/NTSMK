@@ -69,12 +69,38 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import java.lang.ref.WeakReference
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
     private val viewModel: RadioPlayerViewModel by viewModels()
 
+    private val hardCloseReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.example.ACTION_HARD_CLOSE") {
+                finishAffinity()
+                finishAndRemoveTask()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = WeakReference(this)
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                hardCloseReceiver,
+                IntentFilter("com.example.ACTION_HARD_CLOSE"),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } catch (e: Exception) {
+            // Ignore if registration fails
+        }
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -90,6 +116,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(hardCloseReceiver)
+        } catch (e: Exception) {
+            // Ignore if not registered
+        }
+        if (instance?.get() == this) {
+            instance = null
+        }
+        super.onDestroy()
+    }
+
+    companion object {
+        var instance: WeakReference<MainActivity>? = null
     }
 }
 

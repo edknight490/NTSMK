@@ -187,8 +187,9 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
                     }
 
                     override fun onStop() {
+                        Log.d(tag, "MediaSession.onStop() callback - hard closing app")
                         viewModelScope.launch(Dispatchers.Main) {
-                            pause()
+                            hardCloseApp()
                         }
                     }
 
@@ -211,7 +212,7 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
     private fun updateMediaSessionState() {
         val state = when (_playerState.value) {
             PlayerState.Playing -> PlaybackState.STATE_PLAYING
-            PlayerState.Loading -> PlaybackState.STATE_BUFFERING
+            PlayerState.Loading -> PlaybackState.STATE_PLAYING
             PlayerState.Paused -> PlaybackState.STATE_PAUSED
             is PlayerState.Error -> PlaybackState.STATE_ERROR
             else -> PlaybackState.STATE_NONE
@@ -234,7 +235,7 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
             .setActions(actions)
             
         mediaSession?.setPlaybackState(stateBuilder.build())
-        mediaSession?.isActive = (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED)
+        mediaSession?.isActive = (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED || state == PlaybackState.STATE_BUFFERING)
     }
 
     private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): android.graphics.Bitmap {
@@ -310,33 +311,116 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
     private fun updateForegroundService(state: PlayerState) {
         val context = getApplication<Application>()
         val item = _currentItem.value
-        if ((state == PlayerState.Playing || state == PlayerState.Loading) && item != null) {
-            acquireWifiLock()
-            val intent = Intent(context, RadioPlaybackService::class.java).apply {
-                action = RadioPlaybackService.ACTION_START
-                putExtra(RadioPlaybackService.EXTRA_TITLE, item.title)
-                putExtra(RadioPlaybackService.EXTRA_SUBTITLE, item.subtitle)
+        if (!isUserInitiatedPlayback || item == null) {
+            return
+        }
+
+        when (state) {
+            PlayerState.Playing -> {
+                acquireWifiLock()
+                sendServiceState(context, item, RadioPlaybackService.STATE_PLAYING)
             }
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            } catch (e: Exception) {
-                Log.e(tag, "Failed to start foreground service", e)
+            PlayerState.Loading -> {
+                acquireWifiLock()
+                sendServiceState(context, item, RadioPlaybackService.STATE_BUFFERING)
             }
-        } else {
-            releaseWifiLock()
-            val intent = Intent(context, RadioPlaybackService::class.java).apply {
-                action = RadioPlaybackService.ACTION_STOP
+            PlayerState.Paused -> {
+                releaseWifiLock()
+                sendServiceState(context, item, RadioPlaybackService.STATE_PAUSED)
             }
-            try {
-                context.startService(intent)
-            } catch (e: Exception) {
-                Log.e(tag, "Failed to stop foreground service", e)
+            is PlayerState.Error -> {
+                releaseWifiLock()
+                sendServiceState(context, item, RadioPlaybackService.STATE_PAUSED)
+            }
+            PlayerState.Idle -> {
+                releaseWifiLock()
             }
         }
+    }
+
+    private fun sendServiceState(context: android.content.Context, item: PlayableItem, pbState: String) {
+        RadioPlaybackService.mediaSessionToken = mediaSession?.sessionToken
+        val intent = Intent(context, RadioPlaybackService::class.java).apply {
+            action = RadioPlaybackService.ACTION_UPDATE
+            putExtra(RadioPlaybackService.EXTRA_TITLE, item.title)
+            putExtra(RadioPlaybackService.EXTRA_SUBTITLE, item.subtitle)
+            putExtra(RadioPlaybackService.EXTRA_PLAYBACK_STATE, pbState)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to send state to foreground service", e)
+        }
+    }
+
+    fun hardCloseApp() {
+        Log.d(tag, "hardCloseApp requested - shutting down playback and terminating app")
+        isUserInitiatedPlayback = false
+
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.reset()
+            mediaPlayer?.release()
+        } catch (e: Exception) {
+            Log.e(tag, "Error releasing mediaPlayer during hardCloseApp", e)
+        }
+        mediaPlayer = null
+        isMediaPlayerPrepared = false
+        _playerState.value = PlayerState.Idle
+
+        abandonAudioFocus()
+        releaseWifiLock()
+
+        try {
+            val stateBuilder = PlaybackState.Builder()
+                .setState(PlaybackState.STATE_STOPPED, 0L, 0f)
+                .setActions(0)
+            mediaSession?.setPlaybackState(stateBuilder.build())
+            mediaSession?.isActive = false
+            mediaSession?.release()
+        } catch (e: Exception) {
+            Log.e(tag, "Error releasing mediaSession during hardCloseApp", e)
+        }
+        mediaSession = null
+
+        val context = getApplication<Application>()
+        val stopServiceIntent = Intent(context, RadioPlaybackService::class.java).apply {
+            action = RadioPlaybackService.ACTION_STOP
+        }
+        try {
+            context.startService(stopServiceIntent)
+        } catch (e: Exception) {
+            Log.e(tag, "Error stopping service during hardCloseApp", e)
+        }
+
+        try {
+            val hardCloseIntent = Intent("com.example.ACTION_HARD_CLOSE").apply {
+                setPackage(context.packageName)
+            }
+            context.sendBroadcast(hardCloseIntent)
+        } catch (e: Exception) {
+            Log.e(tag, "Error sending hard close broadcast", e)
+        }
+
+        try {
+            MainActivity.instance?.get()?.let { act ->
+                act.finishAffinity()
+                act.finishAndRemoveTask()
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error finishing activity in hardCloseApp", e)
+        }
+
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            android.os.Process.killProcess(android.os.Process.myPid())
+            System.exit(0)
+        }, 150)
     }
 
     private val volumeReceiver = object : android.content.BroadcastReceiver() {
@@ -531,12 +615,26 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private val stopReceiver = object : android.content.BroadcastReceiver() {
+    private val mediaControlReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-            if (intent?.action == "com.example.ACTION_MEDIA_STOP") {
-                Log.d(tag, "Stop broadcast received, pausing playback.")
-                viewModelScope.launch(Dispatchers.Main) {
-                    pause()
+            when (intent?.action) {
+                "com.example.ACTION_MEDIA_PLAY" -> {
+                    Log.d(tag, "Broadcast PLAY received")
+                    viewModelScope.launch(Dispatchers.Main) {
+                        play()
+                    }
+                }
+                "com.example.ACTION_MEDIA_PAUSE" -> {
+                    Log.d(tag, "Broadcast PAUSE received")
+                    viewModelScope.launch(Dispatchers.Main) {
+                        pause()
+                    }
+                }
+                "com.example.ACTION_MEDIA_STOP", "com.example.ACTION_HARD_CLOSE" -> {
+                    Log.d(tag, "Broadcast STOP / HARD_CLOSE received")
+                    viewModelScope.launch(Dispatchers.Main) {
+                        hardCloseApp()
+                    }
                 }
             }
         }
@@ -570,17 +668,22 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
             Log.e(tag, "Error registering volume receiver", e)
         }
 
-        // Register broadcast receivers for system stop action and audio becoming noisy (headphone unplugged)
+        // Register broadcast receivers for system media actions (play/pause/stop) and audio becoming noisy (headphone unplugged)
         try {
-            val stopFilter = android.content.IntentFilter("com.example.ACTION_MEDIA_STOP")
+            val controlFilter = android.content.IntentFilter().apply {
+                addAction("com.example.ACTION_MEDIA_PLAY")
+                addAction("com.example.ACTION_MEDIA_PAUSE")
+                addAction("com.example.ACTION_MEDIA_STOP")
+                addAction("com.example.ACTION_HARD_CLOSE")
+            }
             androidx.core.content.ContextCompat.registerReceiver(
                 application,
-                stopReceiver,
-                stopFilter,
+                mediaControlReceiver,
+                controlFilter,
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
             )
         } catch (e: Exception) {
-            Log.e(tag, "Error registering stop receiver", e)
+            Log.e(tag, "Error registering media control receiver", e)
         }
 
         try {
@@ -619,7 +722,7 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
                 if (item != null) {
                     updateMediaSessionMetadata(item)
                     val state = _playerState.value
-                    if (state == PlayerState.Playing || state == PlayerState.Loading) {
+                    if (isUserInitiatedPlayback && (state == PlayerState.Playing || state == PlayerState.Loading || state == PlayerState.Paused)) {
                         updateForegroundService(state)
                     }
                 }
@@ -1162,9 +1265,9 @@ class RadioPlayerViewModel(application: Application) : AndroidViewModel(applicat
             Log.e(tag, "Error unregistering volume receiver", e)
         }
         try {
-            getApplication<Application>().unregisterReceiver(stopReceiver)
+            getApplication<Application>().unregisterReceiver(mediaControlReceiver)
         } catch (e: Exception) {
-            Log.e(tag, "Error unregistering stop receiver", e)
+            Log.e(tag, "Error unregistering media control receiver", e)
         }
         try {
             getApplication<Application>().unregisterReceiver(noisyReceiver)

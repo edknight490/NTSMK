@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "NTS Radio"
+rootProject.name = "NTS MK"
 
 include(":app")
