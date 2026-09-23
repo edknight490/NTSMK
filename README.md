@@ -25,3 +25,4 @@ The Phone has an aggressive background task killer that could affect this app. I
 Each live show starts on the hour every hour, but the API used to access the show information only seems to make an updated version available at around 12/13 mninutes past each hour. I've set the app to fetch new information around then, as well as whenever you start playing a show. You can also drag down on one of the live show card boxes to manually refresh.
 # Please support NTS Radio
 NTS Radio is a brilliant platform that relies on support from its listeners. Please consider signing up to a paid account at https://www.nts.live/
+There's absolutely no obligation to, but if you enjoy it, please consider buying me a coffee here: https://ko-fi.com/edknight
