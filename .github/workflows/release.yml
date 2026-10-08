@@ -34,13 +34,10 @@ jobs:
           java-version: '21'
           cache: 'gradle'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses & Install SDK 35
+      - name: Accept Android SDK Licenses
         run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/16.0/bin:$ANDROID_HOME/platform-tools:$PATH"
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
