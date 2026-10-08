@@ -1473,14 +1473,7 @@ fun MixtapeIcon(
 ) {
     val id = mixtape.id
     val isIconActive = isPlaying || isBuffering
-    val color = when (id) {
-        7 -> Color.Black
-        else -> if (isIconActive) Color.White else Color.Black
-    }
-    val bgColor = when (id) {
-        7 -> Color.White
-        else -> if (isIconActive) Color.Black else Color.White
-    }
+    val bgColor = if (isIconActive) Color.Black else Color.White
 
     val invertColorFilter = if (isPlaying || isBuffering) {
         ColorFilter.colorMatrix(
